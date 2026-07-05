@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Leitor de PDF Pro</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        #toolbar {
+            padding: 10px;
+            background: #222;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            transition: transform 0.3s ease-in-out;
+        }
+
+        #toolbar.hidden {
+            transform: translateY(-100%);
+        }
+
+        #toggleMenu {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 101;
+            padding: 8px 12px;
+            background: #333;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #toggleMenu:hover {
+            background: #444;
+        }
+
+        button, input {
+            margin: 5px;
+            padding: 8px 12px;
+            cursor: pointer;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 4px;
+        }
+
+        input[type="text"], input[type="number"] {
+            cursor: text;
+            background: #222;
+        }
+
+        #pdf-container {
+            position: relative;
+            margin-top: 170px;
+            transition: margin-top 0.3s ease-in-out;
+        }
+
+        #toolbar.hidden + #toggleMenu + #pdf-container {
+            margin-top: 20px;
+        }
+
+        canvas {
+            display: block;
+            margin: 10px auto;
+            filter: invert(1);
+        }
+
+        .textLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            color: transparent;
+        }
+
+        .textLayer span {
+            position: absolute;
+            white-space: pre;
+            transform-origin: 0% 0%;
+        }
+
+        ::selection {
+            background: rgba(0,150,255,0.4);
+        }
+    </style>
+</head>
+<body>
+
+<div id="toolbar">
+    <input type="file" id="fileInput" accept="application/pdf"><br>
+    
+    <button onclick="prevPage()">Anterior (←)</button> 
+    <span id="pageInfo">Página 0 / 0</span> 
+    <button onclick="nextPage()">Próxima (→)</button>
+    
+    <br>
+    
+    <input type="number" id="pageInput" min="1" style="width: 60px;" placeholder="Pág">
+    <button onclick="goToPage()">Ir</button>
+    
+    <button onclick="zoomOut()">Zoom -</button> 
+    <button onclick="zoomIn()">Zoom +</button>
+
+    <hr style="border: 0; border-top: 1px solid #444; margin: 5px 0;">
+    <input type="text" id="searchInput" placeholder="Buscar palavra..." style="width: 200px;">
+    <button onclick="searchWord()">Buscar</button>
+    <button onclick="prevMatch()">Anterior Result.</button>
+    <button onclick="nextMatch()">Próximo Result.</button>
+    <span id="searchInfo" style="font-size: 14px; margin-left: 10px; color: #aaa;"></span>
+</div>
+
+<button id="toggleMenu" onclick="toggleMenu()">Ocultar Menu</button>
+
+<div id="pdf-container"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+<script>
+let pdfDoc = null;
+let currentPage = 1;
+let scale = 1.2;
+
+let pdfPagesText = []; 
+let searchMatches = []; 
+let currentMatchIndex = -1; 
+
+const container = document.getElementById('pdf-container');
+const toolbar = document.getElementById('toolbar');
+const toggleBtn = document.getElementById('toggleMenu');
+const pageInfo = document.getElementById('pageInfo');
+const pageInput = document.getElementById('pageInput');
+const searchInput = document.getElementById('searchInput');
+const searchInfo = document.getElementById('searchInfo');
+
+function toggleMenu() {
+    toolbar.classList.toggle('hidden');
+    toggleBtn.textContent = toolbar.classList.contains('hidden') ? "Mostrar Menu" : "Ocultar Menu";
+}
+
+function indexPdfText() {
+    pdfPagesText = [];
+    searchMatches = [];
+    currentMatchIndex = -1;
+    searchInfo.textContent = "Indexando texto para busca...";
+
+    let promises = [];
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+        promises.push(
+            pdfDoc.getPage(i).then(page => {
+                return page.getTextContent().then(textContent => {
+                    const pageText = textContent.items.map(item => item.str).join(" ").toLowerCase();
+                    return { pageNum: i, text: pageText };
+                });
+            })
+        );
+    }
+
+    Promise.all(promises).then(results => {
+        pdfPagesText = results.sort((a, b) => a.pageNum - b.pageNum);
+        searchInfo.textContent = "Pronto para buscar.";
+    });
+}
+
+function searchWord() {
+    const query = searchInput.value.trim().toLowerCase();
+    searchMatches = [];
+    currentMatchIndex = -1;
+
+    if (!query || pdfPagesText.length === 0) {
+        searchInfo.textContent = "";
+        return;
+    }
+
+    pdfPagesText.forEach(page => {
+        if (page.text.includes(query)) {
+            searchMatches.push(page.pageNum);
+        }
+    });
+
+    if (searchMatches.length > 0) {
+        currentMatchIndex = 0;
+        goToMatch();
+    } else {
+        searchInfo.textContent = "Nenhum resultado encontrado.";
+    }
+}
+
+function goToMatch() {
+    if (currentMatchIndex >= 0 && currentMatchIndex < searchMatches.length) {
+        currentPage = searchMatches[currentMatchIndex];
+        renderPage(currentPage);
+        searchInfo.textContent = `Resultado ${currentMatchIndex + 1} de ${searchMatches.length} (Pág. ${currentPage})`;
+    }
+}
+
+function nextMatch() {
+    if (searchMatches.length === 0) return;
+    currentMatchIndex = (currentMatchIndex + 1) % searchMatches.length;
+    goToMatch();
+}
+
+function prevMatch() {
+    if (searchMatches.length === 0) return;
+    currentMatchIndex = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+    goToMatch();
+}
+
+function renderPage(num) {
+    pdfDoc.getPage(num).then(function(page) {
+        const dpr = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale });
+
+        container.innerHTML = "";
+
+        const pageDiv = document.createElement('div');
+        pageDiv.style.position = "relative";
+        pageDiv.style.margin = "10px auto";
+        pageDiv.style.width = viewport.width + "px";
+        pageDiv.style.height = viewport.height + "px";
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+
+        canvas.width = viewport.width * dpr;
+        canvas.height = viewport.height * dpr;
+        canvas.style.width = viewport.width + "px";
+        canvas.style.height = viewport.height + "px";
+
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        canvas.style.filter = "invert(1)";
+
+        pageDiv.appendChild(canvas);
+
+        const textLayerDiv = document.createElement('div');
+        textLayerDiv.className = "textLayer";
+        textLayerDiv.style.width = viewport.width + "px";
+        textLayerDiv.style.height = viewport.height + "px";
+
+        pageDiv.appendChild(textLayerDiv);
+        container.appendChild(pageDiv);
+
+        page.render({
+            canvasContext: context,
+            viewport: viewport
+        });
+
+        page.getTextContent().then(function(textContent) {
+            pdfjsLib.renderTextLayer({
+                textContent,
+                container: textLayerDiv,
+                viewport,
+                textDivs: []
+            });
+        });
+
+        pageInfo.textContent = `Página ${currentPage} / ${pdfDoc.numPages}`;
+        window.scrollTo(0, 0);
+    });
+}
+
+function loadPDF(data) {
+    const typedarray = new Uint8Array(data);
+    pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+        pdfDoc = pdf;
+        currentPage = 1;
+        renderPage(currentPage);
+        indexPdfText();
+    });
+}
+
+function nextPage() {
+    if (pdfDoc && currentPage < pdfDoc.numPages) {
+        currentPage++;
+        renderPage(currentPage);
+    }
+}
+
+function prevPage() {
+    if (pdfDoc && currentPage > 1) {
+        currentPage--;
+        renderPage(currentPage);
+    }
+}
+
+function goToPage() {
+    if (!pdfDoc) return;
+    const page = parseInt(pageInput.value);
+    if (page >= 1 && page <= pdfDoc.numPages) {
+        currentPage = page;
+        renderPage(currentPage);
+    }
+}
+
+function zoomIn() {
+    if (!pdfDoc) return;
+    scale += 0.2;
+    renderPage(currentPage);
+}
+
+function zoomOut() {
+    if (!pdfDoc) return;
+    if (scale > 0.4) {
+        scale -= 0.2;
+        renderPage(currentPage);
+    }
+}
+
+// --- EVENTOS DE TECLADO CORRIGIDOS ---
+document.addEventListener("keydown", function(e) {
+    if (document.activeElement === pageInput || document.activeElement === searchInput) return;
+
+    if (e.ctrlKey && (e.key === "ArrowUp" || e.keyCode === 38)) {
+        e.preventDefault(); 
+        zoomIn();
+    } else if (e.ctrlKey && (e.key === "ArrowDown" || e.keyCode === 40)) {
+        e.preventDefault(); 
+        zoomOut();
+    }
+    else if (!e.ctrlKey && (e.key === "ArrowRight" || e.keyCode === 39)) {
+        nextPage();
+    } else if (!e.ctrlKey && (e.key === "ArrowLeft" || e.keyCode === 37)) {
+        prevPage();
+    } else if (!e.ctrlKey && e.key.toLowerCase() === "m") {
+        toggleMenu();
+    }
+}, { passive: false });
+
+pageInput.addEventListener("keypress", function(e) {
+    if (e.key === "Enter") {
+        goToPage();
+        pageInput.blur();
+    }
+});
+
+searchInput.addEventListener("keypress", function(e) {
+    if (e.key === "Enter") {
+        searchWord();
+    }
+});
+
+document.getElementById('fileInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const fileReader = new FileReader();
+    fileReader.onload = function() {
+        loadPDF(this.result);
+    };
+    fileReader.readAsArrayBuffer(file);
+});
+
+// --- COMUNICAÇÃO NATIVA COM O ELECTRON (MANTIDA) ---
+window.electronAPI.onOpenPDF((pdfPath) => {
+    if (!pdfPath) return;
+    fetch(pdfPath)
+    .then(response => response.arrayBuffer())
+    .then(data => {
+        loadPDF(data);
+    });
+});
+</script>
+</body>
+</html>
