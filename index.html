@@ -73,7 +73,20 @@
         canvas {
             display: block;
             margin: 10px auto;
+            transition: filter 0.2s ease;
+        }
+
+        /* Temas de Cor do Canvas */
+        canvas.theme-invert {
             filter: invert(1);
+        }
+
+        canvas.theme-normal {
+            filter: none;
+        }
+
+        canvas.theme-sepia {
+            filter: sepia(0.8) contrast(1.2) brightness(0.9);
         }
 
         .textLayer {
@@ -91,6 +104,11 @@
 
         ::selection {
             background: rgba(0,150,255,0.4);
+        }
+
+        .highlight {
+            background-color: rgba(255, 255, 0, 0.4);
+            border-radius: 2px;
         }
     </style>
 </head>
@@ -110,6 +128,8 @@
     
     <button onclick="zoomOut()">Zoom -</button> 
     <button onclick="zoomIn()">Zoom +</button>
+    
+    <button id="colorBtn" onclick="toggleColorTheme()">Cor: Invertido 🌙</button>
 
     <hr style="border: 0; border-top: 1px solid #444; margin: 5px 0;">
     <input type="text" id="searchInput" placeholder="Buscar palavra..." style="width: 200px;">
@@ -129,6 +149,15 @@
 let pdfDoc = null;
 let currentPage = 1;
 let scale = 1.2;
+let isRendering = false; // Trava para evitar renderizações simultâneas
+
+const themes = ['invert', 'normal', 'sepia'];
+const themeLabels = {
+    'invert': 'Cor: Invertido 🌙',
+    'normal': 'Cor: Normal ☀️',
+    'sepia': 'Cor: Sépia 📜'
+};
+let currentThemeIndex = 0;
 
 let pdfPagesText = []; 
 let searchMatches = []; 
@@ -141,10 +170,22 @@ const pageInfo = document.getElementById('pageInfo');
 const pageInput = document.getElementById('pageInput');
 const searchInput = document.getElementById('searchInput');
 const searchInfo = document.getElementById('searchInfo');
+const colorBtn = document.getElementById('colorBtn');
 
 function toggleMenu() {
     toolbar.classList.toggle('hidden');
     toggleBtn.textContent = toolbar.classList.contains('hidden') ? "Mostrar Menu" : "Ocultar Menu";
+}
+
+function toggleColorTheme() {
+    currentThemeIndex = (currentThemeIndex + 1) % themes.length;
+    const currentTheme = themes[currentThemeIndex];
+    colorBtn.textContent = themeLabels[currentTheme];
+    
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+        canvas.className = `theme-${currentTheme}`;
+    }
 }
 
 function indexPdfText() {
@@ -216,12 +257,14 @@ function prevMatch() {
 }
 
 function renderPage(num) {
+    if (isRendering) return;
+    isRendering = true;
+
     pdfDoc.getPage(num).then(function(page) {
         const dpr = window.devicePixelRatio || 1;
         const viewport = page.getViewport({ scale });
 
-        container.innerHTML = "";
-
+        // Cria os elementos off-screen (invisíveis na memória)
         const pageDiv = document.createElement('div');
         pageDiv.style.position = "relative";
         pageDiv.style.margin = "10px auto";
@@ -237,7 +280,7 @@ function renderPage(num) {
         canvas.style.height = viewport.height + "px";
 
         context.setTransform(dpr, 0, 0, dpr, 0, 0);
-        canvas.style.filter = "invert(1)";
+        canvas.className = `theme-${themes[currentThemeIndex]}`;
 
         pageDiv.appendChild(canvas);
 
@@ -247,34 +290,34 @@ function renderPage(num) {
         textLayerDiv.style.height = viewport.height + "px";
 
         pageDiv.appendChild(textLayerDiv);
-        container.appendChild(pageDiv);
 
-        page.render({
+        // Renderiza o Canvas em background
+        const renderTask = page.render({
             canvasContext: context,
             viewport: viewport
         });
 
-        page.getTextContent().then(function(textContent) {
-            pdfjsLib.renderTextLayer({
-                textContent,
-                container: textLayerDiv,
-                viewport,
-                textDivs: []
+        renderTask.promise.then(function() {
+            // Desenha a camada de texto após o canvas finalizar
+            return page.getTextContent().then(function(textContent) {
+                pdfjsLib.renderTextLayer({
+                    textContent,
+                    container: textLayerDiv,
+                    viewport,
+                    textDivs: []
+                });
             });
+        }).then(function() {
+            // Substitui o conteúdo do container instantaneamente
+            container.innerHTML = "";
+            container.appendChild(pageDiv);
+
+            pageInfo.textContent = `Página ${currentPage} / ${pdfDoc.numPages}`;
+            window.scrollTo(0, 0);
+            isRendering = false;
+        }).catch(function() {
+            isRendering = false;
         });
-
-        pageInfo.textContent = `Página ${currentPage} / ${pdfDoc.numPages}`;
-        window.scrollTo(0, 0);
-    });
-}
-
-function loadPDF(data) {
-    const typedarray = new Uint8Array(data);
-    pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
-        pdfDoc = pdf;
-        currentPage = 1;
-        renderPage(currentPage);
-        indexPdfText();
     });
 }
 
@@ -315,7 +358,7 @@ function zoomOut() {
     }
 }
 
-// --- EVENTOS DE TECLADO CORRIGIDOS ---
+// --- EVENTOS DE TECLADO ---
 document.addEventListener("keydown", function(e) {
     if (document.activeElement === pageInput || document.activeElement === searchInput) return;
 
@@ -332,6 +375,8 @@ document.addEventListener("keydown", function(e) {
         prevPage();
     } else if (!e.ctrlKey && e.key.toLowerCase() === "m") {
         toggleMenu();
+    } else if (!e.ctrlKey && e.key.toLowerCase() === "c") {
+        toggleColorTheme();
     }
 }, { passive: false });
 
@@ -354,20 +399,17 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
 
     const fileReader = new FileReader();
     fileReader.onload = function() {
-        loadPDF(this.result);
+        const typedarray = new Uint8Array(this.result);
+        pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+            pdfDoc = pdf;
+            currentPage = 1;
+            renderPage(currentPage);
+            indexPdfText();
+        });
     };
     fileReader.readAsArrayBuffer(file);
 });
-
-// --- COMUNICAÇÃO NATIVA COM O ELECTRON (MANTIDA) ---
-window.electronAPI.onOpenPDF((pdfPath) => {
-    if (!pdfPath) return;
-    fetch(pdfPath)
-    .then(response => response.arrayBuffer())
-    .then(data => {
-        loadPDF(data);
-    });
-});
 </script>
+
 </body>
 </html>
