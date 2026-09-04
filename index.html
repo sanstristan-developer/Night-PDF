@@ -4,12 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="icon" type="image/png" href="favicon.png">
-    <title>Night PDF Mobile</title>
+    <title>Night PDF Light</title>
     <style>
-        * {
-            box-sizing: border-box;
-        }
-
+        * { box-sizing: border-box; }
         body {
             margin: 0;
             background: #111;
@@ -28,7 +25,7 @@
             left: 0;
             right: 0;
             z-index: 100;
-            transition: transform 0.3s ease-in-out;
+            transition: transform 0.2s ease;
             max-height: 80vh;
             overflow-y: auto;
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
@@ -43,99 +40,61 @@
             margin-bottom: 6px;
         }
 
-        #toolbar.hidden {
-            transform: translateY(-100%);
-        }
+        #toolbar.hidden { transform: translateY(-100%); }
 
         #toggleMenu {
             position: fixed;
             bottom: 15px;
             right: 15px;
             z-index: 101;
-            padding: 12px 16px;
+            padding: 10px 14px;
             background: #333;
             color: white;
             border: 1px solid #555;
-            border-radius: 25px;
+            border-radius: 20px;
             cursor: pointer;
-            font-size: 14px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+            font-size: 13px;
         }
 
         button, input {
-            padding: 10px 14px;
+            padding: 8px 12px;
             cursor: pointer;
             background: #333;
             color: white;
             border: 1px solid #555;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             touch-action: manipulation;
         }
 
         input[type="text"], input[type="number"], input[type="file"] {
-            cursor: text;
             background: #222;
             max-width: 100%;
         }
 
-        input[type="file"] {
-            width: 100%;
-            max-width: 280px;
-        }
-
         #pdf-container {
             position: relative;
-            margin-top: 190px;
-            transition: margin-top 0.3s ease-in-out;
+            margin-top: 180px;
             display: flex;
             justify-content: center;
-            overflow-x: auto;
             padding: 10px 0;
         }
 
-        #toolbar.hidden ~ #pdf-container {
-            margin-top: 20px;
-        }
+        #toolbar.hidden ~ #pdf-container { margin-top: 20px; }
 
         canvas {
             display: block;
             margin: 0 auto;
-            transition: filter 0.2s ease;
             max-width: 100%;
             height: auto !important;
         }
 
-        /* Temas de Cor do Canvas */
         canvas.theme-invert { filter: invert(1); }
         canvas.theme-normal { filter: none; }
         canvas.theme-sepia { filter: sepia(0.8) contrast(1.2) brightness(0.9); }
 
-        .textLayer {
-            position: absolute;
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            color: transparent;
-            pointer-events: none;
-        }
-
-        .textLayer span {
-            position: absolute;
-            white-space: pre;
-            transform-origin: 0% 0%;
-        }
-
-        ::selection { background: rgba(0,150,255,0.4); }
-
         @media (max-width: 600px) {
-            #pdf-container {
-                margin-top: 230px;
-            }
-            button, input {
-                padding: 12px 10px;
-                font-size: 13px;
-            }
+            #pdf-container { margin-top: 220px; }
         }
     </style>
 </head>
@@ -149,24 +108,24 @@
     
     <div class="toolbar-group">
         <button onclick="prevPage()">← Anterior</button> 
-        <span id="pageInfo" style="font-size: 14px; min-width: 90px;">Página 0 / 0</span> 
+        <span id="pageInfo" style="font-size: 13px; min-width: 80px;">Página 0 / 0</span> 
         <button onclick="nextPage()">Próxima →</button>
     </div>
     
     <div class="toolbar-group">
-        <input type="number" id="pageInput" min="1" style="width: 60px;" placeholder="Pág">
+        <input type="number" id="pageInput" min="1" style="width: 50px;" placeholder="Pág">
         <button onclick="goToPage()">Ir</button>
         <button onclick="zoomOut()">Zoom -</button> 
         <button onclick="zoomIn()">Zoom +</button>
     </div>
 
-    <div class="toolbar-group" style="border-top: 1px solid #444; pt-6px; width: 100%;">
-        <input type="text" id="searchInput" placeholder="Buscar palavra..." style="width: 140px;">
+    <div class="toolbar-group" style="border-top: 1px solid #444; padding-top: 4px; width: 100%;">
+        <input type="text" id="searchInput" placeholder="Buscar..." style="width: 120px;">
         <button onclick="searchWord()">Buscar</button>
         <button onclick="prevMatch()">←</button>
         <button onclick="nextMatch()">→</button>
     </div>
-    <span id="searchInfo" style="font-size: 12px; color: #aaa; display: block;"></span>
+    <span id="searchInfo" style="font-size: 11px; color: #aaa; display: block;"></span>
 </div>
 
 <button id="toggleMenu" onclick="toggleMenu()">Ocultar Menu</button>
@@ -178,8 +137,9 @@
 <script>
 let pdfDoc = null;
 let currentPage = 1;
-let scale = 1.0;
+let scale = window.innerWidth < 600 ? 0.95 : 1.2;
 let isRendering = false;
+let renderTask = null;
 
 const themes = ['invert', 'normal', 'sepia'];
 const themeLabels = {
@@ -202,16 +162,6 @@ const searchInput = document.getElementById('searchInput');
 const searchInfo = document.getElementById('searchInfo');
 const colorBtn = document.getElementById('colorBtn');
 
-// Ajusta o zoom inicial dinamicamente com base na largura da tela mobile
-function setResponsiveScale() {
-    if (window.innerWidth < 600) {
-        scale = 0.8;
-    } else {
-        scale = 1.2;
-    }
-}
-setResponsiveScale();
-
 function toggleMenu() {
     toolbar.classList.toggle('hidden');
     toggleBtn.textContent = toolbar.classList.contains('hidden') ? "Mostrar Menu" : "Ocultar Menu";
@@ -219,140 +169,52 @@ function toggleMenu() {
 
 function toggleColorTheme() {
     currentThemeIndex = (currentThemeIndex + 1) % themes.length;
-    const currentTheme = themes[currentThemeIndex];
-    colorBtn.textContent = themeLabels[currentTheme];
-    
+    colorBtn.textContent = themeLabels[themes[currentThemeIndex]];
     const canvas = document.querySelector('canvas');
-    if (canvas) {
-        canvas.className = `theme-${currentTheme}`;
-    }
+    if (canvas) canvas.className = `theme-${themes[currentThemeIndex]}`;
 }
 
-function indexPdfText() {
-    pdfPagesText = [];
-    searchMatches = [];
-    currentMatchIndex = -1;
-    searchInfo.textContent = "Indexando texto...";
-
-    let promises = [];
-    for (let i = 1; i <= pdfDoc.numPages; i++) {
-        promises.push(
-            pdfDoc.getPage(i).then(page => {
-                return page.getTextContent().then(textContent => {
-                    const pageText = textContent.items.map(item => item.str).join(" ").toLowerCase();
-                    return { pageNum: i, text: pageText };
-                });
-            })
-        );
-    }
-
-    Promise.all(promises).then(results => {
-        pdfPagesText = results.sort((a, b) => a.pageNum - b.pageNum);
-        searchInfo.textContent = "Pronto para buscar.";
-    });
-}
-
-function searchWord() {
-    const query = searchInput.value.trim().toLowerCase();
-    searchMatches = [];
-    currentMatchIndex = -1;
-
-    if (!query || pdfPagesText.length === 0) {
-        searchInfo.textContent = "";
-        return;
-    }
-
-    pdfPagesText.forEach(page => {
-        if (page.text.includes(query)) {
-            searchMatches.push(page.pageNum);
-        }
-    });
-
-    if (searchMatches.length > 0) {
-        currentMatchIndex = 0;
-        goToMatch();
-    } else {
-        searchInfo.textContent = "Sem resultados.";
-    }
-}
-
-function goToMatch() {
-    if (currentMatchIndex >= 0 && currentMatchIndex < searchMatches.length) {
-        currentPage = searchMatches[currentMatchIndex];
-        renderPage(currentPage);
-        searchInfo.textContent = `${currentMatchIndex + 1}/${searchMatches.length} (Pág. ${currentPage})`;
-    }
-}
-
-function nextMatch() {
-    if (searchMatches.length === 0) return;
-    currentMatchIndex = (currentMatchIndex + 1) % searchMatches.length;
-    goToMatch();
-}
-
-function prevMatch() {
-    if (searchMatches.length === 0) return;
-    currentMatchIndex = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
-    goToMatch();
-}
-
+// Renderização Ultra Leve
 function renderPage(num) {
-    if (isRendering) return;
+    if (!pdfDoc) return;
+    
+    // Cancela a renderização anterior se o usuário mudar de página rapidamente
+    if (renderTask) {
+        renderTask.cancel();
+    }
+
     isRendering = true;
 
     pdfDoc.getPage(num).then(function(page) {
-        const dpr = window.devicePixelRatio || 1;
+        // Limita o DPR no mobile em no máximo 1.5x para não sobrecarregar a memória
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
         const viewport = page.getViewport({ scale });
 
-        const pageDiv = document.createElement('div');
-        pageDiv.style.position = "relative";
-        pageDiv.style.margin = "0 auto";
-        pageDiv.style.width = viewport.width + "px";
-        pageDiv.style.height = viewport.height + "px";
-
         const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
+        const context = canvas.getContext('2d', { alpha: false }); // Desativa alpha para renderizar mais rápido
 
-        canvas.width = viewport.width * dpr;
-        canvas.height = viewport.height * dpr;
-        canvas.style.width = viewport.width + "px";
-        canvas.style.height = viewport.height + "px";
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = Math.floor(viewport.width) + "px";
+        canvas.style.height = Math.floor(viewport.height) + "px";
 
         context.setTransform(dpr, 0, 0, dpr, 0, 0);
         canvas.className = `theme-${themes[currentThemeIndex]}`;
 
-        pageDiv.appendChild(canvas);
-
-        const textLayerDiv = document.createElement('div');
-        textLayerDiv.className = "textLayer";
-        textLayerDiv.style.width = viewport.width + "px";
-        textLayerDiv.style.height = viewport.height + "px";
-
-        pageDiv.appendChild(textLayerDiv);
-
-        const renderTask = page.render({
+        renderTask = page.render({
             canvasContext: context,
             viewport: viewport
         });
 
         renderTask.promise.then(function() {
-            return page.getTextContent().then(function(textContent) {
-                pdfjsLib.renderTextLayer({
-                    textContent,
-                    container: textLayerDiv,
-                    viewport,
-                    textDivs: []
-                });
-            });
-        }).then(function() {
             container.innerHTML = "";
-            container.appendChild(pageDiv);
-
+            container.appendChild(canvas);
             pageInfo.textContent = `${currentPage} / ${pdfDoc.numPages}`;
-            window.scrollTo(0, 0);
             isRendering = false;
-        }).catch(function() {
-            isRendering = false;
+        }).catch(function(err) {
+            if (err.name !== 'RenderingCancelledException') {
+                isRendering = false;
+            }
         });
     });
 }
@@ -388,97 +250,71 @@ function zoomIn() {
 
 function zoomOut() {
     if (!pdfDoc) return;
-    if (scale > 0.3) {
+    if (scale > 0.4) {
         scale -= 0.15;
         renderPage(currentPage);
     }
 }
 
-// --- SUPORTE A GESTOS MOBILE (SWIPE & PINCH) ---
-let touchStartX = 0;
-let touchEndX = 0;
-let initialPinchDistance = null;
+// Indexação sob demanda para economizar RAM
+async function searchWord() {
+    const query = searchInput.value.trim().toLowerCase();
+    if (!query || !pdfDoc) return;
 
-container.addEventListener('touchstart', function(e) {
-    if (e.touches.length === 1) {
-        touchStartX = e.touches[0].clientX;
-    } else if (e.touches.length === 2) {
-        initialPinchDistance = Math.hypot(
-            e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-        );
-    }
-}, { passive: true });
+    searchInfo.textContent = "Buscando...";
 
-container.addEventListener('touchend', function(e) {
-    if (e.changedTouches.length === 1 && initialPinchDistance === null) {
-        touchEndX = e.changedTouches[0].clientX;
-        handleSwipe();
-    }
-    initialPinchDistance = null;
-}, { passive: true });
-
-container.addEventListener('touchmove', function(e) {
-    if (e.touches.length === 2 && initialPinchDistance !== null) {
-        const currentDistance = Math.hypot(
-            e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-        );
-        
-        const diff = currentDistance - initialPinchDistance;
-        if (Math.abs(diff) > 40) {
-            if (diff > 0) {
-                zoomIn();
-            } else {
-                zoomOut();
-            }
-            initialPinchDistance = currentDistance;
+    if (pdfPagesText.length === 0) {
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+            const page = await pdfDoc.getPage(i);
+            const textContent = await page.getTextContent();
+            const text = textContent.items.map(item => item.str).join(" ").toLowerCase();
+            pdfPagesText.push({ pageNum: i, text });
         }
     }
-}, { passive: true });
 
-function handleSwipe() {
-    const swipeThreshold = 50;
-    if (touchEndX < touchStartX - swipeThreshold) {
-        nextPage();
-    } else if (touchEndX > touchStartX + swipeThreshold) {
-        prevPage();
+    searchMatches = pdfPagesText.filter(p => p.text.includes(query)).map(p => p.pageNum);
+
+    if (searchMatches.length > 0) {
+        currentMatchIndex = 0;
+        goToMatch();
+    } else {
+        searchInfo.textContent = "Sem resultados.";
     }
 }
 
-// --- EVENTOS DE TECLADO ---
-document.addEventListener("keydown", function(e) {
-    if (document.activeElement === pageInput || document.activeElement === searchInput) return;
-
-    if (e.ctrlKey && (e.key === "ArrowUp" || e.keyCode === 38)) {
-        e.preventDefault(); 
-        zoomIn();
-    } else if (e.ctrlKey && (e.key === "ArrowDown" || e.keyCode === 40)) {
-        e.preventDefault(); 
-        zoomOut();
-    } else if (!e.ctrlKey && (e.key === "ArrowRight" || e.keyCode === 39)) {
-        nextPage();
-    } else if (!e.ctrlKey && (e.key === "ArrowLeft" || e.keyCode === 37)) {
-        prevPage();
-    } else if (!e.ctrlKey && e.key.toLowerCase() === "m") {
-        toggleMenu();
-    } else if (!e.ctrlKey && e.key.toLowerCase() === "c") {
-        toggleColorTheme();
+function goToMatch() {
+    if (currentMatchIndex >= 0 && currentMatchIndex < searchMatches.length) {
+        currentPage = searchMatches[currentMatchIndex];
+        renderPage(currentPage);
+        searchInfo.textContent = `${currentMatchIndex + 1}/${searchMatches.length} (Pág. ${currentPage})`;
     }
-}, { passive: false });
+}
 
-pageInput.addEventListener("keypress", function(e) {
-    if (e.key === "Enter") {
-        goToPage();
-        pageInput.blur();
-    }
-});
+function nextMatch() {
+    if (searchMatches.length === 0) return;
+    currentMatchIndex = (currentMatchIndex + 1) % searchMatches.length;
+    goToMatch();
+}
 
-searchInput.addEventListener("keypress", function(e) {
-    if (e.key === "Enter") {
-        searchWord();
-    }
-});
+function prevMatch() {
+    if (searchMatches.length === 0) return;
+    currentMatchIndex = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+    goToMatch();
+}
+
+// Gestos Swipe leves
+let touchStartX = 0;
+let touchEndX = 0;
+
+container.addEventListener('touchstart', e => {
+    touchStartX = e.changedTouches[0].clientX;
+}, { passive: true });
+
+container.addEventListener('touchend', e => {
+    touchEndX = e.changedTouches[0].clientX;
+    if (touchEndX < touchStartX - 60) nextPage();
+    if (touchEndX > touchStartX + 60) prevPage();
+}, { passive: true });
 
 document.getElementById('fileInput').addEventListener('change', function(e) {
     const file = e.target.files[0];
@@ -490,8 +326,9 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
         pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
             pdfDoc = pdf;
             currentPage = 1;
+            pdfPagesText = [];
             renderPage(currentPage);
-            indexPdfText();
+            searchInfo.textContent = "";
         });
     };
     fileReader.readAsArrayBuffer(file);
