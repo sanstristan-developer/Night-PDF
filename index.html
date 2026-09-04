@@ -2,19 +2,26 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="icon" type="image/png" href="favicon.png">
-    <title>Night PDF</title>
+    <title>Night PDF Mobile</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
             background: #111;
             color: white;
             font-family: Arial, sans-serif;
             text-align: center;
+            overflow-x: hidden;
+            touch-action: pan-y;
         }
 
         #toolbar {
-            padding: 10px;
+            padding: 8px;
             background: #222;
             position: fixed;
             top: 0;
@@ -22,6 +29,18 @@
             right: 0;
             z-index: 100;
             transition: transform 0.3s ease-in-out;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        .toolbar-group {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 6px;
         }
 
         #toolbar.hidden {
@@ -30,70 +49,75 @@
 
         #toggleMenu {
             position: fixed;
-            top: 10px;
-            right: 10px;
+            bottom: 15px;
+            right: 15px;
             z-index: 101;
-            padding: 8px 12px;
+            padding: 12px 16px;
             background: #333;
             color: white;
-            border: 1px solid #444;
-            border-radius: 4px;
+            border: 1px solid #555;
+            border-radius: 25px;
             cursor: pointer;
-        }
-
-        #toggleMenu:hover {
-            background: #444;
+            font-size: 14px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.6);
         }
 
         button, input {
-            margin: 5px;
-            padding: 8px 12px;
+            padding: 10px 14px;
             cursor: pointer;
             background: #333;
             color: white;
             border: 1px solid #555;
-            border-radius: 4px;
+            border-radius: 6px;
+            font-size: 14px;
+            touch-action: manipulation;
         }
 
-        input[type="text"], input[type="number"] {
+        input[type="text"], input[type="number"], input[type="file"] {
             cursor: text;
             background: #222;
+            max-width: 100%;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            max-width: 280px;
         }
 
         #pdf-container {
             position: relative;
-            margin-top: 170px;
+            margin-top: 190px;
             transition: margin-top 0.3s ease-in-out;
+            display: flex;
+            justify-content: center;
+            overflow-x: auto;
+            padding: 10px 0;
         }
 
-        #toolbar.hidden + #toggleMenu + #pdf-container {
+        #toolbar.hidden ~ #pdf-container {
             margin-top: 20px;
         }
 
         canvas {
             display: block;
-            margin: 10px auto;
+            margin: 0 auto;
             transition: filter 0.2s ease;
+            max-width: 100%;
+            height: auto !important;
         }
 
         /* Temas de Cor do Canvas */
-        canvas.theme-invert {
-            filter: invert(1);
-        }
-
-        canvas.theme-normal {
-            filter: none;
-        }
-
-        canvas.theme-sepia {
-            filter: sepia(0.8) contrast(1.2) brightness(0.9);
-        }
+        canvas.theme-invert { filter: invert(1); }
+        canvas.theme-normal { filter: none; }
+        canvas.theme-sepia { filter: sepia(0.8) contrast(1.2) brightness(0.9); }
 
         .textLayer {
             position: absolute;
             top: 0;
-            left: 0;
+            left: 50%;
+            transform: translateX(-50%);
             color: transparent;
+            pointer-events: none;
         }
 
         .textLayer span {
@@ -102,41 +126,47 @@
             transform-origin: 0% 0%;
         }
 
-        ::selection {
-            background: rgba(0,150,255,0.4);
-        }
+        ::selection { background: rgba(0,150,255,0.4); }
 
-        .highlight {
-            background-color: rgba(255, 255, 0, 0.4);
-            border-radius: 2px;
+        @media (max-width: 600px) {
+            #pdf-container {
+                margin-top: 230px;
+            }
+            button, input {
+                padding: 12px 10px;
+                font-size: 13px;
+            }
         }
     </style>
 </head>
 <body>
 
 <div id="toolbar">
-    <input type="file" id="fileInput" accept="application/pdf"><br>
+    <div class="toolbar-group">
+        <input type="file" id="fileInput" accept="application/pdf">
+        <button id="colorBtn" onclick="toggleColorTheme()">🌙 Invertido</button>
+    </div>
     
-    <button onclick="prevPage()">Anterior (←)</button> 
-    <span id="pageInfo">Página 0 / 0</span> 
-    <button onclick="nextPage()">Próxima (→)</button>
+    <div class="toolbar-group">
+        <button onclick="prevPage()">← Anterior</button> 
+        <span id="pageInfo" style="font-size: 14px; min-width: 90px;">Página 0 / 0</span> 
+        <button onclick="nextPage()">Próxima →</button>
+    </div>
     
-    <br>
-    
-    <input type="number" id="pageInput" min="1" style="width: 60px;" placeholder="Pág">
-    <button onclick="goToPage()">Ir</button>
-    
-    <button onclick="zoomOut()">Zoom -</button> 
-    <button onclick="zoomIn()">Zoom +</button>
-    
-    <button id="colorBtn" onclick="toggleColorTheme()">Cor: Invertido 🌙</button>
+    <div class="toolbar-group">
+        <input type="number" id="pageInput" min="1" style="width: 60px;" placeholder="Pág">
+        <button onclick="goToPage()">Ir</button>
+        <button onclick="zoomOut()">Zoom -</button> 
+        <button onclick="zoomIn()">Zoom +</button>
+    </div>
 
-    <hr style="border: 0; border-top: 1px solid #444; margin: 5px 0;">
-    <input type="text" id="searchInput" placeholder="Buscar palavra..." style="width: 200px;">
-    <button onclick="searchWord()">Buscar</button>
-    <button onclick="prevMatch()">Anterior Result.</button>
-    <button onclick="nextMatch()">Próximo Result.</button>
-    <span id="searchInfo" style="font-size: 14px; margin-left: 10px; color: #aaa;"></span>
+    <div class="toolbar-group" style="border-top: 1px solid #444; pt-6px; width: 100%;">
+        <input type="text" id="searchInput" placeholder="Buscar palavra..." style="width: 140px;">
+        <button onclick="searchWord()">Buscar</button>
+        <button onclick="prevMatch()">←</button>
+        <button onclick="nextMatch()">→</button>
+    </div>
+    <span id="searchInfo" style="font-size: 12px; color: #aaa; display: block;"></span>
 </div>
 
 <button id="toggleMenu" onclick="toggleMenu()">Ocultar Menu</button>
@@ -148,14 +178,14 @@
 <script>
 let pdfDoc = null;
 let currentPage = 1;
-let scale = 1.2;
-let isRendering = false; // Trava para evitar renderizações simultâneas
+let scale = 1.0;
+let isRendering = false;
 
 const themes = ['invert', 'normal', 'sepia'];
 const themeLabels = {
-    'invert': 'Cor: Invertido 🌙',
-    'normal': 'Cor: Normal ☀️',
-    'sepia': 'Cor: Sépia 📜'
+    'invert': '🌙 Invertido',
+    'normal': '☀️ Normal',
+    'sepia': '📜 Sépia'
 };
 let currentThemeIndex = 0;
 
@@ -171,6 +201,16 @@ const pageInput = document.getElementById('pageInput');
 const searchInput = document.getElementById('searchInput');
 const searchInfo = document.getElementById('searchInfo');
 const colorBtn = document.getElementById('colorBtn');
+
+// Ajusta o zoom inicial dinamicamente com base na largura da tela mobile
+function setResponsiveScale() {
+    if (window.innerWidth < 600) {
+        scale = 0.8;
+    } else {
+        scale = 1.2;
+    }
+}
+setResponsiveScale();
 
 function toggleMenu() {
     toolbar.classList.toggle('hidden');
@@ -192,7 +232,7 @@ function indexPdfText() {
     pdfPagesText = [];
     searchMatches = [];
     currentMatchIndex = -1;
-    searchInfo.textContent = "Indexando texto para busca...";
+    searchInfo.textContent = "Indexando texto...";
 
     let promises = [];
     for (let i = 1; i <= pdfDoc.numPages; i++) {
@@ -232,7 +272,7 @@ function searchWord() {
         currentMatchIndex = 0;
         goToMatch();
     } else {
-        searchInfo.textContent = "Nenhum resultado encontrado.";
+        searchInfo.textContent = "Sem resultados.";
     }
 }
 
@@ -240,7 +280,7 @@ function goToMatch() {
     if (currentMatchIndex >= 0 && currentMatchIndex < searchMatches.length) {
         currentPage = searchMatches[currentMatchIndex];
         renderPage(currentPage);
-        searchInfo.textContent = `Resultado ${currentMatchIndex + 1} de ${searchMatches.length} (Pág. ${currentPage})`;
+        searchInfo.textContent = `${currentMatchIndex + 1}/${searchMatches.length} (Pág. ${currentPage})`;
     }
 }
 
@@ -264,10 +304,9 @@ function renderPage(num) {
         const dpr = window.devicePixelRatio || 1;
         const viewport = page.getViewport({ scale });
 
-        // Cria os elementos off-screen (invisíveis na memória)
         const pageDiv = document.createElement('div');
         pageDiv.style.position = "relative";
-        pageDiv.style.margin = "10px auto";
+        pageDiv.style.margin = "0 auto";
         pageDiv.style.width = viewport.width + "px";
         pageDiv.style.height = viewport.height + "px";
 
@@ -291,14 +330,12 @@ function renderPage(num) {
 
         pageDiv.appendChild(textLayerDiv);
 
-        // Renderiza o Canvas em background
         const renderTask = page.render({
             canvasContext: context,
             viewport: viewport
         });
 
         renderTask.promise.then(function() {
-            // Desenha a camada de texto após o canvas finalizar
             return page.getTextContent().then(function(textContent) {
                 pdfjsLib.renderTextLayer({
                     textContent,
@@ -308,11 +345,10 @@ function renderPage(num) {
                 });
             });
         }).then(function() {
-            // Substitui o conteúdo do container instantaneamente
             container.innerHTML = "";
             container.appendChild(pageDiv);
 
-            pageInfo.textContent = `Página ${currentPage} / ${pdfDoc.numPages}`;
+            pageInfo.textContent = `${currentPage} / ${pdfDoc.numPages}`;
             window.scrollTo(0, 0);
             isRendering = false;
         }).catch(function() {
@@ -346,15 +382,67 @@ function goToPage() {
 
 function zoomIn() {
     if (!pdfDoc) return;
-    scale += 0.2;
+    scale += 0.15;
     renderPage(currentPage);
 }
 
 function zoomOut() {
     if (!pdfDoc) return;
-    if (scale > 0.4) {
-        scale -= 0.2;
+    if (scale > 0.3) {
+        scale -= 0.15;
         renderPage(currentPage);
+    }
+}
+
+// --- SUPORTE A GESTOS MOBILE (SWIPE & PINCH) ---
+let touchStartX = 0;
+let touchEndX = 0;
+let initialPinchDistance = null;
+
+container.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+        touchStartX = e.touches[0].clientX;
+    } else if (e.touches.length === 2) {
+        initialPinchDistance = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+    }
+}, { passive: true });
+
+container.addEventListener('touchend', function(e) {
+    if (e.changedTouches.length === 1 && initialPinchDistance === null) {
+        touchEndX = e.changedTouches[0].clientX;
+        handleSwipe();
+    }
+    initialPinchDistance = null;
+}, { passive: true });
+
+container.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 2 && initialPinchDistance !== null) {
+        const currentDistance = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        
+        const diff = currentDistance - initialPinchDistance;
+        if (Math.abs(diff) > 40) {
+            if (diff > 0) {
+                zoomIn();
+            } else {
+                zoomOut();
+            }
+            initialPinchDistance = currentDistance;
+        }
+    }
+}, { passive: true });
+
+function handleSwipe() {
+    const swipeThreshold = 50;
+    if (touchEndX < touchStartX - swipeThreshold) {
+        nextPage();
+    } else if (touchEndX > touchStartX + swipeThreshold) {
+        prevPage();
     }
 }
 
@@ -368,8 +456,7 @@ document.addEventListener("keydown", function(e) {
     } else if (e.ctrlKey && (e.key === "ArrowDown" || e.keyCode === 40)) {
         e.preventDefault(); 
         zoomOut();
-    }
-    else if (!e.ctrlKey && (e.key === "ArrowRight" || e.keyCode === 39)) {
+    } else if (!e.ctrlKey && (e.key === "ArrowRight" || e.keyCode === 39)) {
         nextPage();
     } else if (!e.ctrlKey && (e.key === "ArrowLeft" || e.keyCode === 37)) {
         prevPage();
